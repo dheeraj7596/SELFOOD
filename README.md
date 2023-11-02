@@ -1,20 +1,24 @@
 # SELFOOD: Self-Supervised Out-Of-Distribution Detection via Learning to Rank
 This repository provides the code for training SELFOOD with *IDIL Loss* presented in the paper "[SELFOOD: Self-Supervised Out-Of-Distribution Detection via Learning to Rank](https://arxiv.org/abs/2305.14696)" accepted to EMNLP 2023.
 
+TODO add our framework picture
+
 ## Getting Started
 ### Requirements
 ```
-* ubuntu 20.04.4 LTS, cuda 11.6
+* cuda 11.6
 * python 3.8.16
 * huggingface-hub==0.12.1
 * torch==1.13.1
 * torchvision==0.14.1 
+* TODO transformers==
 ```
 ### Datasets
 * Clima, NYT, TREC, Yelp
+* TODO Add installation instructions or add datasets to the code
 
-## How to Run
-### Arguments (TODO)
+## Training
+### Arguments (TODO remove ce_loss_lambda, add --idil_loss as argument)
 | Args 	| Type 	| Description 	| Default|
 |---------|--------|----------------------------------------------------|:-----:|
 | seed 	| [int] 	| experiment seed | 42 |
@@ -28,26 +32,30 @@ This repository provides the code for training SELFOOD with *IDIL Loss* presente
 | validation_file 	| [str] 	| validation file path	|  - |
 | test_file 	| [str] 	| evaluation file path	|  - |
 
-## Train with IDIL Loss
- 
-### Examples 
+### Command 
 * Set the  `idil_loss` flag to train model with IDIL Loss.
 ``` 
 python3 train_classifier.py --seed 21   --model  bert-base-uncased --train_file data/clima/clima_indomain/train.pkl --validation_file data/clima/clima_indomain/validation.pkl --max_length 512 --train_batch_size 8 --output_dir models/clima/clima_indomain/idil_loss/   --idil_loss --num_train_epochs 8 
 ```
 
-## Train baseline models
-* Remove the  `idil_loss` flag to train model with Cross-Entropy Loss.
+[//]: # (## Train baseline models TODO no need of this)
 
-### Examples
-``` 
-python3 train_classifier.py --seed 21   --model  bert-base-uncased --train_file data/clima/clima_indomain/train.pkl --validation_file data/clima/clima_indomain/validation.pkl --max_length 512 --train_batch_size 8 --output_dir models/clima/clima_indomain/ce_loss/   --with_wandb True --num_train_epochs 8 
-```
+[//]: # (* Remove the  `idil_loss` flag to train model with Cross-Entropy Loss.)
 
-### Evaluate the trained model (TODO)
+[//]: # ()
+[//]: # (### Examples)
+
+[//]: # (``` )
+
+[//]: # (python3 train_classifier.py --seed 21   --model  bert-base-uncased --train_file data/clima/clima_indomain/train.pkl --validation_file data/clima/clima_indomain/validation.pkl --max_length 512 --train_batch_size 8 --output_dir models/clima/clima_indomain/ce_loss/   --with_wandb True --num_train_epochs 8 )
+
+[//]: # (```)
+
+### Evaluate the trained model (TODO make it one command)
 ``` 
 ``` 
-#  Calculate the model predictions for model saved under `model` path against the dataset `test_file`
+
+[//]: # (#  Calculate the model predictions for model saved under `model` path against the dataset `test_file`)
 
 ## Calculate preditions for in-domain portion of test set
 ``` 
@@ -65,7 +73,8 @@ python3 metrics.py --ind_logit_path   results/clima/clima_indomain/logits.pt  --
 
 ``` 
 ## Results
-### Performance measures
+TODO add more description about what is the in domain and ood datasets here and what's the classfier?
+### Performance metrics
 ``` 
 - FPR95
 - Detection Error (ERR)
@@ -84,8 +93,9 @@ python3 metrics.py --ind_logit_path   results/clima/clima_indomain/logits.pt  --
 | CE Loss	| TREC	| NYT	| 8.4 | 1.3 | 97.6 | 87.5 | 
 
 * More results can be found in the paper.
+```
 
-### Citation
+## Citation
 ```
 @misc{mekala2023selfood,
       title={SELFOOD: Self-Supervised Out-Of-Distribution Detection via Learning to Rank}, 
@@ -96,7 +106,3 @@ python3 metrics.py --ind_logit_path   results/clima/clima_indomain/logits.pt  --
       primaryClass={cs.CL}
 }
 ```
-
-### Contact for issues
-- Dheeraj Mekala, demekala@ucsd.edu
-- Adithya Samavedhui, asamavedhi@ucsd.edu
