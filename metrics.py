@@ -17,9 +17,9 @@ def parse_args():
     parser.add_argument(
         "--ood_logit_path", type=str, default=None, help="A saved torch tensor representing the logits of out-of-domain evaluation dataset"
     )
-parser.add_argument(
-        "--ind_label_path", type=str, default=None, help="A saved torch tensor representing the labels of indomain evaluation dataset"
-    )
+    parser.add_argument(
+            "--ind_label_path", type=str, default=None, help="A saved torch tensor representing the labels of indomain evaluation dataset"
+        )
 
     args = parser.parse_args()
     return args

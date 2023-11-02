@@ -25,12 +25,12 @@ TODO add our framework picture
 | epochs 	| [int] 	| epochs | 8 |
 | batch_size 	| [int] 	| batch size| 128|
 | model 	| [str]	| bert-base-uncased, roberta-base | 	 bert-base-uncased |
-| idil_loss_lambda 	| [float] 	| proportion of IDIL loss | 1.0	|
-| ce_loss_lambda 	| [float] 	| proportion of CE loss | 0.0|
+| idil_loss 	| [flag] 	| Use IDIL loss | False	|
 | output_dir 	| [str] 	| save files path	|  - |
 | train_file 	| [str] 	| training file path	|  - |
 | validation_file 	| [str] 	| validation file path	|  - |
-| test_file 	| [str] 	| evaluation file path	|  - |
+| ind_test_file 	| [str] 	| indomain evaluation file path	|  - |
+| ood_test_file 	| [str] 	| OOD evaluation file path	|  - |
 
 ### Command 
 * Set the  `idil_loss` flag to train model with IDIL Loss.
@@ -51,25 +51,13 @@ python3 train_classifier.py --seed 21   --model  bert-base-uncased --train_file 
 
 [//]: # (```)
 
-### Evaluate the trained model (TODO make it one command)
-``` 
-``` 
 
-[//]: # (#  Calculate the model predictions for model saved under `model` path against the dataset `test_file`)
+#  Evaluate the trained model
 
-## Calculate preditions for in-domain portion of test set
-``` 
-python3 train_classifier.py --seed 13 --do_predict   --model   models/clima/clima_indomain/  --train_file data/clima/clima_indomain/train.pkl --validation_file data/clima/clima_indomain/validation.pkl --test_file data/clima/clima_indomain/test.pkl --max_length 512 --per_device_eval_batch_size 128 --output_dir results/clima/clima_indomain/  
-
-``` 
-## Calculate preditions for OOD portion of test set
-``` 
-python3 train_classifier.py --seed 13 --do_predict   --model   models/clima/clima_indomain/  --train_file data/clima/clima_indomain/train.pkl --validation_file data/clima/clima_indomain/validation.pkl --test_file data/yelp/yelp_ood/test.pkl --max_length 512 --per_device_eval_batch_size 128 --output_dir results/clima/yelp_ood/  
-```
-### Calculate metrics against evaluated data (TODO)
+### Calculate metrics against evaluation data (TODO)
 ``` 
 # Calculate performance metrics from the saved logits from path `ind_logit_path.pt` and `ood_logit_path.pt`.
-python3 metrics.py --ind_logit_path   results/clima/clima_indomain/logits.pt  --ood_logit_path   results/clima/yelp_ood/logits.pt --ind_label_path results/clima/clima_indomain/labels.pt
+python3  train_classifier.py --do_predict   --model   models/clima/clima_indomain/  --train_file data/clima/clima_indomain/train.pkl --validation_file data/clima/clima_indomain/validation.pkl --ind_test_file data/clima/clima_indomain/test.pkl  --ood_test_file data/nyt/nyt_ood/test.pkl  --max_length 512 --per_device_eval_batch_size 128 --output_dir results/clima/clima_vs_nyt/  
 
 ``` 
 ## Results
@@ -81,7 +69,7 @@ TODO add more description about what is the in domain and ood datasets here and 
 - AUROC
 - AUPR
 
-### Results on CIFAR-100
+### Results 
 
 | Model | Indomain-Dataset | OOD-Dataset  | FPR95 | ERR | AUROC | AUPR |
 |---------|--------|--------|--------|--------|--------|--------|

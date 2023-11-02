@@ -96,19 +96,15 @@ def parse_args():
     parser.add_argument(
         "--validation_file", type=str, default=None, help="A csv or a json file containing the validation data."
     )
-    parser.add_argument(
-        "--ood_file", type=str, default=None, help="A csv or a json file containing the OOD data."
-    )
-    parser.add_argument(
-        "--val_ind", type=str, default=None, help="A csv or a json file containing the validation indomain data."
-    )
-    parser.add_argument(
-        "--val_ood", type=str, default=None, help="A csv or a json file containing the validation ood data."
-    )
     
     parser.add_argument(
-        "--test_file", type=str, default=None, help="A csv or a json file containing the test data."
+        "--ind_test_file", type=str, default=None, help="A csv or a json file containing the in-domain test data."
     )
+
+    parser.add_argument(
+        "--ood_test_file", type=str, default=None, help="A csv or a json file containing the  out-of-domain test data."
+    )
+
     parser.add_argument(
         "--max_length",
         type=int,
@@ -133,7 +129,6 @@ def parse_args():
     help="Flag indicating whether to use idil loss. Must be set to True or False."
 )
 
-
     parser.add_argument(
         "--do_predict",
         action="store_true",
@@ -153,7 +148,7 @@ def parse_args():
         help="If passed, pad all samples to `max_length`. Otherwise, dynamic padding is used.",
     )
     parser.add_argument(
-        "--model_name_or_path",
+        "--model",
         type=str,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
         required=True,
@@ -241,12 +236,7 @@ def parse_args():
         default=True,
         help="Whether to use wandb for logging",
     )
-    parser.add_argument(
-        "--validate_ood",
-        required=False,
-        default=False,
-        help="Whether to use validation ood set",
-    )
+
 
     parser.add_argument(
         "--with_custom_loss",
@@ -311,33 +301,6 @@ def calculate_ranking_loss(logits: torch.Tensor, true_labels: torch.Tensor, num_
     # loss = (loss-b).abs() + b
     loss = loss* torch.sigmoid(loss)   # SiLU loss
     return loss
-
-def calculate_val_logits(accelerator, dataloader, model):
-    model, test_dataloader, = accelerator.prepare(model, dataloader)
-
-    model.eval()
-    pred_inds = []
-
-    pred_logits = torch.Tensor().cuda()
-    ground_truth  = []
-    for step, batch in enumerate(test_dataloader):
-        # print(batch)
-        with torch.no_grad():
-            outputs = model(**batch)
-        pred_logits = torch.cat((pred_logits, outputs.logits ), axis=0)
-        
-    model.train()
-    return pred_logits
-
-
-def calculate_ood_metrics(args, logits_ind, logits_ood ):
-    logits = torch.cat([logits_ind.cpu(), logits_ood.cpu()], axis =0)
-    ind = torch.Tensor([0]*logits_ind.shape[0])
-    ood = torch.Tensor([1]*logits_ood.shape[0])
-    is_ood = torch.cat((ind, ood), axis=-1) 
-    fpr, detection_err, auroc, aupr = calc_metrics(logits, is_ood)
-    return fpr
-
 
 
 
@@ -410,26 +373,19 @@ def main():
             data_files["train"] = args.train_file
         if args.validation_file is not None:
             data_files["validation"] = args.validation_file
-        if args.test_file is not None:
-            data_files["test"] = args.test_file
+        if args.ind_test_file is not None and args.ood_test_file is not None:
+            data_files["ind_test"] = args.ind_test_file
+            data_files["ood_test"] = args.ood_test_file
         extension = (args.train_file if args.train_file is not None else args.valid_file).split(".")[-1]
         if extension == "pkl":
             raw_datasets = load_dataset('pandas', data_files=data_files)
         else:
             raw_datasets = load_dataset(extension, data_files=data_files)
         if args.do_predict:
-            true_labels = list(raw_datasets["test"]["label"])
+            ind_true_labels = list(raw_datasets["ind_test"]["label"])
+            ood_true_labels = list(raw_datasets["ood_test"]["label"])
 
 
-        if args.validate_ood:
-            print(args.val_ind)
-            with open( args.val_ind, "rb") as f:
-                val_ind_data = pickle.load(f) 
-            with open( args.val_ood, "rb") as f:
-                val_ood_data = pickle.load(f) 
-            val_ind_dataset = Dataset.from_dict(val_ind_data)
-            val_ood_dataset = Dataset.from_dict(val_ood_data)
-            raw_datasets.update({"val_ind":val_ind_dataset, "val_ood": val_ood_dataset})
     # See more about loading any type of standard or custom dataset at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -457,22 +413,22 @@ def main():
     #
     # In distributed training, the .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    config = AutoConfig.from_pretrained(args.model_name_or_path, num_labels=num_labels, finetuning_task=args.task_name)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
+    config = AutoConfig.from_pretrained(args.model, num_labels=num_labels, finetuning_task=args.task_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=not args.use_slow_tokenizer)
 
     
 
 
     model = AutoModelForSequenceClassification.from_pretrained(
-        args.model_name_or_path,
-        from_tf=bool(".ckpt" in args.model_name_or_path),
+        args.model,
+        from_tf=bool(".ckpt" in args.model),
         config=config,
     )
 
 
 
 
-    if args.model_name_or_path == "gpt2":
+    if args.model == "gpt2":
         tokenizer.padding_side = "left"
         # Define PAD Token = EOS Token = 50256
         tokenizer.pad_token = tokenizer.eos_token
@@ -543,11 +499,8 @@ def main():
     train_dataset = processed_datasets["train"]
     eval_dataset = processed_datasets["validation_matched" if args.task_name == "mnli" else "validation"]
     if args.do_predict:
-        test_dataset = processed_datasets["test"]
-
-    if args.validate_ood:
-        val_ind_dataset = processed_datasets["val_ind"]
-        val_ood_dataset = processed_datasets["val_ood"]
+        ind_test_dataset = processed_datasets["ind_test"]
+        ood_test_dataset = processed_datasets["ood_test"]
 
 
     # Log a few random samples from the training set:
@@ -574,13 +527,10 @@ def main():
     )
 
     eval_dataloader = DataLoader(eval_dataset, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size)
-    if args.do_predict:
-        test_dataloader = DataLoader(test_dataset, shuffle=False, collate_fn=data_collator,
-                                     batch_size=args.per_device_eval_batch_size)
-    if args.validate_ood:
-        val_ind_dataloader = DataLoader(val_ind_dataset, shuffle=True, collate_fn=data_collator,batch_size=args.per_device_eval_batch_size)
-        val_ood_dataloader = DataLoader(val_ood_dataset, shuffle=True, collate_fn=data_collator,batch_size=args.per_device_eval_batch_size)
 
+    if args.do_predict:
+        ind_test_dataloader = DataLoader(ind_test_dataset, shuffle=False, collate_fn=data_collator, batch_size=args.per_device_eval_batch_size)
+        ood_test_dataloader = DataLoader(ood_test_dataset, shuffle=False, collate_fn=data_collator,batch_size=args.per_device_eval_batch_size)
 
 
     # Optimizer
@@ -832,66 +782,86 @@ def main():
 
     if args.do_predict:
         logger.info("***** Running testing *****")
-        logger.info(f"  Num examples = {len(test_dataset)}")
+        logger.info(f"  Indomain Num examples = {len(ind_test_dataset)}")
+        logger.info(f"  Out-of-domain Num examples = {len(ood_test_dataset)}")
 
-        config = AutoConfig.from_pretrained(args.model_name_or_path, num_labels=num_labels,
+        config = AutoConfig.from_pretrained(args.model, num_labels=num_labels,
                                             finetuning_task=args.task_name)
-        tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
-
+        tokenizer = AutoTokenizer.from_pretrained(args.model, use_fast=not args.use_slow_tokenizer)
         if args.resume_from_checkpoint is None:
             model = AutoModelForSequenceClassification.from_pretrained(
-                args.model_name_or_path,
-                from_tf=bool(".ckpt" in args.model_name_or_path),
+                args.model,
+                from_tf=bool(".ckpt" in args.model),
                 config=config,
             )
 
-        model, test_dataloader, = accelerator.prepare(model, test_dataloader)
+        model, ind_test_dataloader, = accelerator.prepare(model, ind_test_dataloader)
+        model, ood_test_dataloader, = accelerator.prepare(model, ood_test_dataloader)
 
         model.eval()
-        pred_inds = []
+        pred_ind = []
+        pred_ood = []
 
-        pred_logits = torch.Tensor().cuda()
-        ground_truth  = []
-        for step, batch in enumerate(test_dataloader):
-            # print(batch)
+        ind_pred_logits = torch.Tensor().cuda()
+        ood_pred_logits = torch.Tensor().cuda()
+        ind_ground_truth  = []
+        ood_ground_truth  = []
+
+        for step, batch in enumerate(ind_test_dataloader):
             with torch.no_grad():
                 outputs = model(**batch)
             predictions = outputs.logits.argmax(dim=-1) if not is_regression else outputs.logits.squeeze()
-            pred_logits = torch.cat((pred_logits, outputs.logits ), axis=0)
-            pred_inds += list(predictions)
+            ind_pred_logits = torch.cat((ind_pred_logits, outputs.logits ), axis=0)
+            pred_ind += list(predictions)
             metric.add_batch(
                 predictions=accelerator.gather(predictions),
                 references=accelerator.gather(batch["labels"]),
             )
             
-            ground_truth.extend(batch["labels"])
+            ind_ground_truth.extend(batch["labels"])
+
+        for step, batch in enumerate(ood_test_dataloader):
+            with torch.no_grad():
+                outputs = model(**batch)
+            predictions = outputs.logits.argmax(dim=-1) if not is_regression else outputs.logits.squeeze()
+            ood_pred_logits = torch.cat((ood_pred_logits, outputs.logits ), axis=0)
+            pred_ood += list(predictions)
+            metric.add_batch(
+                predictions=accelerator.gather(predictions),
+                references=accelerator.gather(batch["labels"]),
+            )
+            
+            ood_ground_truth.extend(batch["labels"])
         
         # saving the prediction tensors
-        print(f"Pred_logits_shape : {pred_logits.shape}")
-        torch.save(pred_logits, f'{args.output_dir}pred_logits.pt')
-
-        print(f"Ground Truth_shape : {len(ground_truth)}")
-
-
+        print(f"Pred_logits_shape : {ind_pred_logits.shape}")
+        torch.save(ind_pred_logits, f'{args.output_dir}ind_pred_logits.pt')
+        print(f"Ground Truth_shape : {len(ind_ground_truth)}")
         # saving the ground truth
-        torch.save(torch.tensor(ground_truth,dtype=torch.float64), f'{args.output_dir}labels.pt')
+        torch.save(torch.tensor(ind_ground_truth,dtype=torch.float64), f'{args.output_dir}ind_labels.pt')
+
+
+        # saving the prediction tensors
+        print(f"Pred_logits_shape : {ood_pred_logits.shape}")
+        torch.save(ood_pred_logits, f'{args.output_dir}ood_pred_logits.pt')
+        print(f"Ground Truth_shape : {len(ood_ground_truth)}")
+        # saving the ground truth
+        torch.save(torch.tensor(ood_ground_truth,dtype=torch.float64), f'{args.output_dir}ood_labels.pt')
 
             
+        logits_ind = ind_pred_logits.cpu()
+        ind = torch.Tensor([0]*logits_ind.shape[0])
 
-        pred_labels = [label_list[i] for i in pred_inds]
+        logits_ood = ood_pred_logits.cpu()
+        ood = torch.Tensor([1]*logits_ood.shape[0])
 
-        eval_metric = metric.compute()
-        logger.info(f"Performance: {eval_metric}")
+
         
+        logits  = torch.cat((logits_ind, logits_ood ), axis=0) 
+        is_ood = torch.cat((ind, ood), axis=0)
 
-        print(classification_report(true_labels, pred_labels), flush=True)
-        print("*" * 80, flush=True)
-        print("Micro f1", f1_score(true_labels, pred_labels, average='micro'), flush=True)
-        print("Macro f1", f1_score(true_labels, pred_labels, average='macro'), flush=True)
-
-    if args.output_dir is not None:
-        with open(os.path.join(args.output_dir, "all_results.json"), "w") as f:
-            json.dump({"eval_accuracy": eval_metric["accuracy"]}, f)
+        # Print metrics
+        fpr, detection_err, auroc, aupr = calc_metrics(logits, is_ood)
 
 
 if __name__ == "__main__":
